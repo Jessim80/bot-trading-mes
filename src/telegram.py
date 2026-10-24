@@ -14,7 +14,9 @@ def esc(x) -> str:
 
 
 def _creds():
-    tok, chat = os.getenv("TELEGRAM_BOT_TOKEN"), os.getenv("TELEGRAM_CHAT_ID")
+    # On retire espaces et retours à la ligne collés par erreur depuis un téléphone.
+    tok = "".join((os.getenv("TELEGRAM_BOT_TOKEN") or "").split())
+    chat = "".join((os.getenv("TELEGRAM_CHAT_ID") or "").split())
     return (None, None) if os.getenv("DRY_RUN") == "1" or not tok or not chat else (tok, chat)
 
 
