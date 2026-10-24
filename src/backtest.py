@@ -1,8 +1,4 @@
-"""Backtest de l'Opening Range Breakout + test de robustesse + verdict.
-
-Usage :  python -m src.backtest            (données Yahoo : ~60 derniers jours en 5 min)
-         python -m src.backtest --csv fichier.csv   (historique plus long)
-"""
+"""Backtest de l'Opening Range Breakout + test de robustesse + verdict."""
 from __future__ import annotations
 
 import argparse
@@ -18,7 +14,20 @@ from .strategy import Market, Params, from_config, simulate_day
 from .telegram import esc, send_message, send_photo
 
 
-def run(intraday: pd.DataFrame, atr: pd.Series | None, p: Params, m: Market, risk: float, max_c: int):
+def daily_trend(daily: pd.DataFrame | None, n: int = 20) -> pd.Series | None:
+    """+1 si la clôture de la VEILLE est au-dessus de sa moyenne 20 jours, -1 sinon (sans regarder le futur)."""
+    if daily is None or daily.empty:
+        return None
+    c = daily["Close"]
+    t = (c > c.rolling(n).mean()).astype(int) * 2 - 1
+    t[c.rolling(n).mean().isna()] = 0
+    t = t.shift(1)
+    t.index = pd.to_datetime(t.index).tz_localize(None).normalize()
+    return t
+
+
+def run(intraday: pd.DataFrame, atr: pd.Series | None, p: Params, m: Market, risk: float, max_c: int,
+        trend: pd.Series | None = None):
     bars = rth(intraday)
     rows = []
     for day, g in bars.groupby(bars.index.date):
@@ -26,7 +35,11 @@ def run(intraday: pd.DataFrame, atr: pd.Series | None, p: Params, m: Market, ris
         if atr is not None:
             v = atr.get(pd.Timestamp(day))
             a = float(v) if v is not None and pd.notna(v) else None
-        rows.append(simulate_day(g, day, p, m, risk, max_c, a))
+        tr = None
+        if trend is not None:
+            v = trend.get(pd.Timestamp(day))
+            tr = int(v) if v is not None and pd.notna(v) else None
+        rows.append(simulate_day(g, day, p, m, risk, max_c, a, tr))
     return pd.DataFrame(rows)
 
 
@@ -55,11 +68,11 @@ def stats(res: pd.DataFrame) -> dict:
             "max_loss_streak": best}
 
 
-def grid(intraday, atr, base: Params, m, risk, max_c) -> pd.DataFrame:
+def grid(intraday, atr, base: Params, m, risk, max_c, trend=None) -> pd.DataFrame:
     rows = []
     for rm, sm, tr in itertools.product([5, 15, 30], ["opposite", "mid"], [1.0, 1.5, 2.0]):
         p = replace(base, range_minutes=rm, stop_mode=sm, target_r=tr)
-        s = stats(run(intraday, atr, p, m, risk, max_c))
+        s = stats(run(intraday, atr, p, m, risk, max_c, trend))
         rows.append({"range_min": rm, "stop": sm, "target_r": tr, **{k: s[k] for k in
                      ("trades", "win_rate", "profit_factor", "expectancy_r", "total_pnl", "max_drawdown")}})
     return pd.DataFrame(rows).sort_values("expectancy_r", ascending=False)
@@ -98,27 +111,27 @@ def chart(res: pd.DataFrame, path) -> bool:
 
 
 def report(s, v, g, p: Params, period: str) -> str:
-    L = [f"<b>📊 BACKTEST — Opening Range Breakout sur MES</b>",
+    L = [f"📊 BACKTEST — Opening Range Breakout sur MES" + (" · filtre tendance" if p.trend_filter else ""),
          f"Période : {esc(period)}",
          f"Réglages : range {p.range_minutes} min · stop {p.stop_mode} · objectif {p.target_r}R · sortie {p.exit_time} NY",
          "",
-         f"Trades : <b>{s['trades']}</b> sur {s['days']} jours",
-         f"Taux de réussite : <b>{s['win_rate']} %</b>",
+         f"Trades : {s['trades']} sur {s['days']} jours",
+         f"Taux de réussite : {s['win_rate']} %",
          f"Gain moyen : {s['avg_win']} $ · Perte moyenne : {s['avg_loss']} $",
-         f"Profit factor : <b>{s['profit_factor']}</b>",
-         f"Espérance : <b>{s['expectancy_r']:+} R</b> par trade",
-         f"Résultat total : <b>{s['total_pnl']:+} $</b>",
+         f"Profit factor : {s['profit_factor']}",
+         f"Espérance : {s['expectancy_r']:+} R par trade",
+         f"Résultat total : {s['total_pnl']:+} $",
          f"Pire baisse (drawdown) : {s['max_drawdown']} $ · Pire série de pertes : {s['max_loss_streak']}",
-         "", "<b>Contrôles :</b>"]
+         "", "Contrôles :"]
     L += [f"{'✅' if ok else '❌'} {esc(k)}" for k, ok in v["checks"].items()]
-    L += ["", "<b>Top 5 des variantes testées :</b>"]
+    L += ["", "Top 5 des variantes testées :"]
     for _, r in g.head(5).iterrows():
         L.append(f"• {r.range_min} min / {r.stop} / {r.target_r}R → {r.expectancy_r:+} R, PF {r.profit_factor}, {r.trades} trades")
-    L += ["", ("✅ <b>STRATÉGIE VALIDÉE</b> — passe en démo pendant 30 trades avant tout argent réel."
+    L += ["", ("✅ STRATÉGIE VALIDÉE — passe en démo pendant 30 trades avant tout argent réel."
                if v["validated"] else
-               "❌ <b>STRATÉGIE NON VALIDÉE</b> — démo uniquement. Ne mets pas d'argent réel dessus."),
-          "<i>Ne choisis pas la meilleure variante juste parce qu'elle a gagné : c'est le piège du sur-ajustement. "
-          "Une stratégie solide gagne avec des réglages proches, pas avec un seul réglage magique.</i>"]
+               "❌ STRATÉGIE NON VALIDÉE — démo uniquement. Ne mets pas d'argent réel dessus."),
+          "Ne choisis pas la meilleure variante juste parce qu'elle a gagné : c'est le piège du sur-ajustement. "
+          "Une stratégie solide gagne avec des réglages proches, pas avec un seul réglage magique."]
     return "\n".join(L)
 
 
@@ -134,11 +147,12 @@ def main(argv=None):
         send_message("⚠️ Backtest : impossible de récupérer les données de marché.")
         return
     try:
-        atr = daily_atr(fetch_daily(cfg["symbol"], "2y"))
+        daily = fetch_daily(cfg["symbol"], "2y")
+        atr, trend = daily_atr(daily), daily_trend(daily)
     except Exception:
-        atr = None
-    res = run(intraday, atr, p, m, risk, max_c)
-    s, g = stats(res), grid(intraday, atr, p, m, risk, max_c)
+        atr = trend = None
+    res = run(intraday, atr, p, m, risk, max_c, trend)
+    s, g = stats(res), grid(intraday, atr, p, m, risk, max_c, trend)
     v = verdict(s, g)
     period = f"{intraday.index[0]:%d/%m/%Y} → {intraday.index[-1]:%d/%m/%Y}"
     RESULTS.mkdir(exist_ok=True)
