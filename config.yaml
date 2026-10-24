@@ -1,0 +1,35 @@
+# ============================================================
+#  Réglages du bot — tu peux modifier les valeurs ici
+# ============================================================
+symbol: "MES=F"          # Micro E-mini S&P 500 (CME)
+point_value: 5.0         # 1 point MES = 5 $
+tick_size: 0.25          # 1 tick = 0,25 point = 1,25 $
+
+account:
+  risk_per_trade_usd: 200   # risque max par trade (adapté à un compte 50K de prop firm)
+  max_contracts: 5          # plafond de sécurité
+
+costs:
+  commission_rt: 1.50       # $ par contrat, aller-retour
+  slippage_ticks: 1         # glissement estimé à l'entrée ET à la sortie
+
+strategy:                   # Opening Range Breakout
+  range_minutes: 15         # durée du range d'ouverture
+  stop_mode: "opposite"     # "opposite" = stop de l'autre côté du range, "mid" = milieu du range
+  target_r: 1.5             # objectif = 1,5 x le risque
+  exit_time: "11:30"        # sortie forcée (heure de New York)
+  max_range_atr: 0.6        # pas de trade si le range > 60 % de la volatilité journalière (ATR)
+
+filters:
+  vix_half_size: 25         # VIX au-dessus -> taille divisée par 2
+  vix_no_trade: 30          # VIX au-dessus -> pas de trade
+
+ai:
+  enabled: true
+  # 100 % gratuit : clé Google AI Studio (sans carte bancaire). Le bot essaie les modèles dans l'ordre.
+  models:
+    - { provider: gemini, model: "gemini-3.5-flash" }
+    - { provider: gemini, model: "gemini-3.1-flash-lite" }
+    - { provider: gemini, model: "gemini-2.5-flash" }
+  timeout_s: 90
+  max_retries: 3
