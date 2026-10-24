@@ -17,6 +17,7 @@ class Params:
     target_r: float = 1.5
     exit_time: str = "11:30"
     max_range_atr: float | None = 0.6
+    trend_filter: bool = True   # ne trader que dans le sens de la tendance de fond
 
 
 @dataclass
@@ -32,7 +33,8 @@ class Market:
 
 def from_config(cfg: dict) -> tuple[Params, Market]:
     s, c = cfg["strategy"], cfg["costs"]
-    return (Params(s["range_minutes"], s["stop_mode"], s["target_r"], s["exit_time"], s.get("max_range_atr")),
+    return (Params(s["range_minutes"], s["stop_mode"], s["target_r"], s["exit_time"], s.get("max_range_atr"),
+                   s.get("trend_filter", True)),
             Market(cfg["tick_size"], cfg["point_value"], c["commission_rt"], c["slippage_ticks"]))
 
 
@@ -75,7 +77,7 @@ def position_size(risk_usd: float, entry: float, stop: float, m: Market, max_c: 
 
 
 def simulate_day(day_bars: pd.DataFrame, day, p: Params, m: Market, risk_usd: float,
-                 max_c: int, atr: float | None = None) -> dict:
+                 max_c: int, atr: float | None = None, trend: int | None = None) -> dict:
     out = {"date": pd.Timestamp(day).date(), "status": "skip"}
     orr = opening_range(day_bars, day, p.range_minutes)
     if orr is None:
@@ -91,6 +93,11 @@ def simulate_day(day_bars: pd.DataFrame, day, p: Params, m: Market, risk_usd: fl
     exit_dt = at(day, hhmm(p.exit_time))
     after = day_bars[(day_bars.index >= rng_end) & (day_bars.index < exit_dt)]
     pos = None
+    allowed = {1, -1}
+    if p.trend_filter and trend in (1, -1):
+        allowed = {trend}
+    elif p.trend_filter and trend == 0:
+        return {**out, "reason": "tendance pas encore calculable"}
 
     def close(px, ts, why):
         pts = (px - pos["entry"]) * pos["dir"]
@@ -106,6 +113,11 @@ def simulate_day(day_bars: pd.DataFrame, day, p: Params, m: Market, risk_usd: fl
             if not (up or dn):
                 continue
             d = (1 if abs(b.Open - hi) <= abs(b.Open - lo) else -1) if (up and dn) else (1 if up else -1)
+            if d not in allowed:  # cassure contre la tendance : on l'ignore
+                if up and dn and -d in allowed:
+                    d = -d
+                else:
+                    continue
             if d == 1:
                 entry, stop, tgt = max(lv["long_entry"], b.Open), lv["long_stop"], lv["long_target"]
             else:
