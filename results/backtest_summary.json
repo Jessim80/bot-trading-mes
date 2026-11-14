@@ -1,16 +1,16 @@
 {
-  "period": "28/08/2026 → 06/11/2026",
+  "period": "04/09/2026 → 13/11/2026",
   "stats": {
     "days": 50,
-    "trades": 31,
-    "win_rate": 29.0,
-    "avg_win": 126.75,
-    "avg_loss": -131.75,
-    "profit_factor": 0.39,
-    "expectancy_r": -0.383,
-    "total_pnl": -1757.75,
-    "max_drawdown": 1837.25,
-    "max_loss_streak": 8
+    "trades": 30,
+    "win_rate": 30.0,
+    "avg_win": 126.61,
+    "avg_loss": -133.0,
+    "profit_factor": 0.41,
+    "expectancy_r": -0.368,
+    "total_pnl": -1653.5,
+    "max_drawdown": 1653.5,
+    "max_loss_streak": 7
   },
   "validated": false,
   "checks": {
@@ -27,5 +27,5 @@
     "max_range_atr": 0.6,
     "trend_filter": true
   },
-  "generated": "2026-11-07T14:48:00.132821+00:00"
+  "generated": "2026-11-14T14:53:55.227866+00:00"
 }
